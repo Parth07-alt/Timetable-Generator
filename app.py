@@ -369,17 +369,15 @@ def generate_timetable(teachers_dict):
                         tutorial_assigned += 1
     
     # Assign electives simultaneously (same time slot, different batches)
+    # But distribute across different days and time slots (not consecutive)
     elective_slots_needed = 3  # 3 hours per week
     elective_days = [d for d in DAYS if d != "Saturday"]
     random.shuffle(elective_days)
     
+    # Get all possible elective slots across different days
+    elective_slot_options = []
     for elective_day in elective_days:
-        if elective_slots_needed == 0:
-            break
-        # Try morning slots first, then afternoon
         for slot_idx in morning_slots + afternoon_slots:
-            if elective_slots_needed == 0:
-                break
             if is_break_or_lunch(slot_idx):
                 continue
             
@@ -407,11 +405,84 @@ def generate_timetable(teachers_dict):
                     break
             
             if can_assign:
-                # Assign to all three batches simultaneously
-                assign_subject(timetable, elective_day, slot_idx, "IM551", ELECTIVES["IM551"]["name"], elective_teachers[0], batch="B1", is_elective=True)
-                assign_subject(timetable, elective_day, slot_idx, "IM552", ELECTIVES["IM552"]["name"], elective_teachers[1], batch="B2", is_elective=True)
-                assign_subject(timetable, elective_day, slot_idx, "IM555", ELECTIVES["IM555"]["name"], elective_teachers[2], batch="B3", is_elective=True)
-                elective_slots_needed -= 1
+                elective_slot_options.append((elective_day, slot_idx))
+    
+    # Shuffle to randomize
+    random.shuffle(elective_slot_options)
+    
+    # Assign electives - ensure different days and time slots
+    used_elective_days = set()
+    used_elective_slots = set()
+    elective_assigned = 0
+    
+    # First pass: assign to different days and different time slots
+    for elective_day, slot_idx in elective_slot_options:
+        if elective_assigned >= elective_slots_needed:
+            break
+        
+        # Prefer different days and different time slots
+        if (elective_day not in used_elective_days or len(used_elective_days) >= len(elective_days)) and slot_idx not in used_elective_slots:
+            # Double-check availability
+            all_available = True
+            for batch in ["B1", "B2", "B3"]:
+                if not get_available_slots(elective_day, slot_idx, timetable, batch):
+                    all_available = False
+                    break
+            
+            if all_available:
+                elective_teachers = [
+                    teachers_dict.get("IM551", "Teacher1"),
+                    teachers_dict.get("IM552", "Teacher2"),
+                    teachers_dict.get("IM555", "Teacher3")
+                ]
+                
+                can_assign = True
+                for teacher in elective_teachers:
+                    if check_teacher_conflict(timetable, elective_day, slot_idx, teacher):
+                        can_assign = False
+                        break
+                
+                if can_assign:
+                    # Assign to all three batches simultaneously
+                    assign_subject(timetable, elective_day, slot_idx, "IM551", ELECTIVES["IM551"]["name"], elective_teachers[0], batch="B1", is_elective=True)
+                    assign_subject(timetable, elective_day, slot_idx, "IM552", ELECTIVES["IM552"]["name"], elective_teachers[1], batch="B2", is_elective=True)
+                    assign_subject(timetable, elective_day, slot_idx, "IM555", ELECTIVES["IM555"]["name"], elective_teachers[2], batch="B3", is_elective=True)
+                    used_elective_days.add(elective_day)
+                    used_elective_slots.add(slot_idx)
+                    elective_assigned += 1
+    
+    # Second pass: if still need more, allow same day but different time slot
+    if elective_assigned < elective_slots_needed:
+        for elective_day, slot_idx in elective_slot_options:
+            if elective_assigned >= elective_slots_needed:
+                break
+            
+            if slot_idx not in used_elective_slots:
+                all_available = True
+                for batch in ["B1", "B2", "B3"]:
+                    if not get_available_slots(elective_day, slot_idx, timetable, batch):
+                        all_available = False
+                        break
+                
+                if all_available:
+                    elective_teachers = [
+                        teachers_dict.get("IM551", "Teacher1"),
+                        teachers_dict.get("IM552", "Teacher2"),
+                        teachers_dict.get("IM555", "Teacher3")
+                    ]
+                    
+                    can_assign = True
+                    for teacher in elective_teachers:
+                        if check_teacher_conflict(timetable, elective_day, slot_idx, teacher):
+                            can_assign = False
+                            break
+                    
+                    if can_assign:
+                        assign_subject(timetable, elective_day, slot_idx, "IM551", ELECTIVES["IM551"]["name"], elective_teachers[0], batch="B1", is_elective=True)
+                        assign_subject(timetable, elective_day, slot_idx, "IM552", ELECTIVES["IM552"]["name"], elective_teachers[1], batch="B2", is_elective=True)
+                        assign_subject(timetable, elective_day, slot_idx, "IM555", ELECTIVES["IM555"]["name"], elective_teachers[2], batch="B3", is_elective=True)
+                        used_elective_slots.add(slot_idx)
+                        elective_assigned += 1
     
     return timetable
 
